@@ -1,0 +1,56 @@
+name: Free Windows RDP
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+    - name: Disable Windows Defender Real-time Protection
+      run: |
+        Set-MpPreference -DisableRealtimeMonitoring $true
+
+    - name: Configure RDP Access
+      run: |
+        $password = ConvertTo-SecureString "Ayar123!@#2024" -AsPlainText -Force
+        New-LocalUser -Name "ahir12345" -Password $password -FullName "RDP User" -Description "Remote Desktop User"
+        Add-LocalGroupMember -Group "Administrators" -Member "ahir12345"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -Name "RemoteDesktop-UserMode-In-TCP"
+        netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
+
+    - name: Download Ngrok
+      run: |
+        # Directly download Ngrok executable
+        Invoke-WebRequest -Uri 'https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip' -OutFile ngrok.zip
+        
+        # Expand the archive without creating a subdirectory
+        Expand-Archive -Path ngrok.zip -DestinationPath . -Force
+
+    - name: Authenticate Ngrok
+      env:
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+      run: |
+        # Use full path and explicit authentication
+        .\ngrok.exe authtoken $env:NGROK_AUTH_TOKEN
+
+    - name: Create Ngrok Tunnel
+      run: |
+        # Start Ngrok tunnel in background
+        Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389" -PassThru
+
+    - name: Display Connection Information
+      run: |
+        # Wait for tunnel to establish
+        Start-Sleep -Seconds 10
+        
+        # Retrieve tunnel information
+        $tunnelInfo = Invoke-RestMethod -Uri http://localhost:4040/api/tunnels
+        Write-Host "RDP Connection Details:"
+        Write-Host "Username: ahir12345"
+        Write-Host "Password: Ayar123!@#2024"
+        Write-Host "Tunnel Endpoint: $($tunnelInfo.tunnels[0].public_url)"
+
+    - name: Maintain Session
+      run: |
+        # Keep workflow active for 6 hours
+        Start-Sleep -Seconds 21600
